@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>AR Product Viewer</title>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <style>
+    html,body{margin:0;height:100%;background:#080b0f;color:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
+    video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#111;display:none}
+    .panel{position:fixed;z-index:20;left:18px;right:18px;bottom:18px;background:rgba(0,0,0,.62);backdrop-filter:blur(8px);border-radius:18px;padding:14px}
+    .start{top:50%;bottom:auto;transform:translateY(-50%);text-align:center;background:rgba(20,25,35,.94);padding:24px}
+    button{border:0;border-radius:13px;padding:12px 15px;margin:5px;background:#fff;color:#111;font-weight:700;font-size:15px}
+    #status{font-size:15px;line-height:1.35}.small{font-size:12px;opacity:.78;margin-top:8px}.err{color:#ffb4b4;white-space:pre-wrap;margin-top:10px}
+    #reticle{display:none;position:fixed;z-index:10;left:50%;top:42%;width:230px;height:160px;transform:translate(-50%,-50%);border:3px dashed rgba(255,255,255,.75);border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.12)}
+    #modelLayer{display:none;position:fixed;z-index:15;left:50%;top:42%;transform:translate(-50%,-50%);width:min(88vw,420px);height:310px;border-radius:22px;background:rgba(10,14,20,.35);border:1px solid rgba(255,255,255,.25);overflow:hidden}
+    model-viewer{width:100%;height:100%;background:transparent}
+    #placeholder3d{display:none;width:100%;height:100%;align-items:center;justify-content:center;perspective:700px}.screw{width:310px;height:46px;position:relative;transform:rotateX(18deg) rotateZ(-18deg);filter:drop-shadow(0 24px 22px rgba(0,0,0,.5))}.shaft{position:absolute;left:0;top:18px;width:210px;height:10px;background:linear-gradient(90deg,#ddd,#777,#eee);border-radius:8px}.tip{position:absolute;left:-20px;top:15px;width:35px;height:16px;background:#ccc;clip-path:polygon(0 50%,100% 0,100% 100%)}.handle{position:absolute;right:0;top:0;width:120px;height:46px;border-radius:24px;background:linear-gradient(135deg,#111 0 45%,#ffc02e 46% 70%,#111 71%)}
+    #controls{display:none;margin-top:10px;text-align:center}.badge{display:inline-block;background:#172233;border:1px solid rgba(255,255,255,.25);padding:7px 10px;border-radius:999px;margin-bottom:7px;font-weight:700}
+  </style>
+</head>
+<body>
+  <video id="video" playsinline autoplay muted></video>
+  <canvas id="work" width="64" height="64" style="display:none"></canvas>
+  <div id="reticle"></div>
+
+  <div id="modelLayer">
+    <model-viewer id="cameraModel" src="assets/models/camera/CameraTest2.gltf" camera-controls auto-rotate exposure="1" shadow-intensity="0" style="display:none"></model-viewer>
+    <div id="placeholder3d"><div class="screw"><div class="tip"></div><div class="shaft"></div><div class="handle"></div></div></div>
+  </div>
+
+  <div id="startPanel" class="panel start">
+    <h2>AR Product Viewer</h2>
+    <p>Kamera działa w Chrome/Safari przez HTTPS. Po uruchomieniu umieść zdjęcie kamery lub śrubokręta w ramce.</p>
+    <button id="startBtn">Uruchom kamerę</button>
+    <div id="error" class="err"></div>
+  </div>
+
+  <div id="hud" class="panel" style="display:none">
+    <div id="detectedBadge" class="badge">Szukam zdjęcia...</div>
+    <div id="status">Umieść zdjęcie kamery lub śrubokręta w przerywanej ramce. Zdjęcie powinno zajmować większość ramki.</div>
+    <div id="controls">
+      <button id="btn360">360°</button>
+      <button id="btnSection">Przekrój</button>
+      <button id="btnExplode">Eksploduj</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div class="small">To jest proste rozpoznawanie dwóch konkretnych zdjęć referencyjnych. Działa najlepiej przy dobrym świetle i gdy zdjęcie jest widoczne prawie na wprost.</div>
+  </div>
+
+<script>
+const video=document.getElementById('video');
+const startBtn=document.getElementById('startBtn');
+const errorBox=document.getElementById('error');
+const startPanel=document.getElementById('startPanel');
+const hud=document.getElementById('hud');
+const statusEl=document.getElementById('status');
+const badge=document.getElementById('detectedBadge');
+const reticle=document.getElementById('reticle');
+const modelLayer=document.getElementById('modelLayer');
+const cameraModel=document.getElementById('cameraModel');
+const placeholder3d=document.getElementById('placeholder3d');
+const controls=document.getElementById('controls');
+const work=document.getElementById('work');
+const ctx=work.getContext('2d',{willReadFrequently:true});
+let refs=[], current=null, scanTimer=null, section=false;
+
+function err(t){errorBox.textContent=t;console.error(t)}
+function graySignatureFromCanvas(){
+  const d=ctx.getImageData(0,0,64,64).data;
+  const arr=new Float32Array(64*64); let sum=0;
+  for(let i=0,j=0;i<d.length;i+=4,j++){ const g=(d[i]*.299+d[i+1]*.587+d[i+2]*.114)/255; arr[j]=g; sum+=g; }
+  const mean=sum/arr.length; let norm=0; for(let i=0;i<arr.length;i++){arr[i]-=mean; norm+=arr[i]*arr[i];}
+  norm=Math.sqrt(norm)||1; for(let i=0;i<arr.length;i++) arr[i]/=norm; return arr;
+}
+function corr(a,b){let s=0; for(let i=0;i<a.length;i++)s+=a[i]*b[i]; return s;}
+function loadRef(name,url){return new Promise((resolve,reject)=>{const img=new Image(); img.onload=()=>{ctx.clearRect(0,0,64,64); ctx.drawImage(img,0,0,64,64); resolve({name, sig:graySignatureFromCanvas()});}; img.onerror=reject; img.src=url;});}
+async function loadRefs(){refs=[await loadRef('Kamera','assets/reference/camera_reference.png'), await loadRef('Śrubokręt','assets/reference/screwdriver_reference.png')];}
+async function start(){
+  errorBox.textContent='';
+  if(!window.isSecureContext){err('Strona musi działać przez HTTPS.'); return;}
+  if(!navigator.mediaDevices?.getUserMedia){err('Ta przeglądarka nie obsługuje dostępu do kamery.'); return;}
+  try{
+    await loadRefs();
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    video.srcObject=stream; video.style.display='block'; startPanel.style.display='none'; hud.style.display='block'; reticle.style.display='block';
+    scanTimer=setInterval(scan,450);
+  } catch(e){err('Nie udało się uruchomić kamery lub załadować obrazów referencyjnych.\n'+(e.name||'')+' '+(e.message||''));}
+}
+function scan(){
+  if(video.readyState<2) return;
+  const vw=video.videoWidth, vh=video.videoHeight; if(!vw||!vh) return;
+  const size=Math.min(vw,vh)*0.62; const sx=(vw-size)/2; const sy=(vh-size)/2;
+  ctx.drawImage(video,sx,sy,size,size,0,0,64,64);
+  const sig=graySignatureFromCanvas();
+  let best={name:null,score:-1}; for(const r of refs){const sc=corr(sig,r.sig); if(sc>best.score) best={name:r.name,score:sc};}
+  if(best.score>0.43){ showDetected(best.name,best.score); } else { showSearching(best.score); }
+}
+function showSearching(score){ if(current) return; badge.textContent='Szukam zdjęcia...'; statusEl.textContent='Umieść zdjęcie kamery albo śrubokręta w ramce. Wynik dopasowania: '+score.toFixed(2); }
+function showDetected(name,score){
+  if(current===name) return; current=name; badge.textContent='Wykryto: '+name; statusEl.textContent='Dopasowanie: '+score.toFixed(2)+'. Dostępne funkcje: 360°, przekrój, widok eksplodowany.'; controls.style.display='block'; modelLayer.style.display='block';
+  if(name==='Kamera'){cameraModel.style.display='block'; placeholder3d.style.display='none'; cameraModel.autoRotate=true;} else {cameraModel.style.display='none'; placeholder3d.style.display='flex';}
+}
+function reset(){current=null;section=false;modelLayer.style.display='none';controls.style.display='none';cameraModel.style.opacity='1';cameraModel.autoRotate=false;badge.textContent='Szukam zdjęcia...';statusEl.textContent='Umieść zdjęcie kamery albo śrubokręta w ramce.';}
+startBtn.onclick=start;
+document.getElementById('btn360').onclick=()=>{ if(current==='Kamera') cameraModel.autoRotate=!cameraModel.autoRotate; else placeholder3d.animate([{transform:'rotateY(0deg)'},{transform:'rotateY(360deg)'}],{duration:5000,iterations:Infinity}); };
+document.getElementById('btnSection').onclick=()=>{ section=!section; if(current==='Kamera'){cameraModel.style.opacity=section?'0.55':'1';} statusEl.textContent=section?'Przekrój: wersja demonstracyjna. Do prawdziwego przekroju potrzebny jest osobny model 3D z przekrojem.':'Przekrój wyłączony.'; };
+document.getElementById('btnExplode').onclick=()=>{statusEl.textContent='Widok eksplodowany: wersja demonstracyjna. Do prawdziwego rozłożenia na części model musi mieć osobne elementy/animację.'; modelLayer.animate([{transform:'translate(-50%,-50%) scale(1)'},{transform:'translate(-50%,-50%) scale(1.18)'},{transform:'translate(-50%,-50%) scale(1)'}],{duration:900});};
+document.getElementById('btnReset').onclick=reset;
+</script>
+</body>
+</html>
