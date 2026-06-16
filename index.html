@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>AR Microscope — MindAR</title>
+
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #070b10;
+      font-family: Arial, sans-serif;
+    }
+
+    #startPanel {
+      position: fixed;
+      z-index: 999;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(90vw, 520px);
+      padding: 24px;
+      border-radius: 22px;
+      background: rgba(19,25,36,.94);
+      color: white;
+      text-align: center;
+      box-shadow: 0 18px 70px rgba(0,0,0,.55);
+    }
+
+    #startButton {
+      border: 0;
+      border-radius: 14px;
+      padding: 14px 20px;
+      font-size: 17px;
+      font-weight: 700;
+      background: white;
+      color: #111;
+      margin-top: 12px;
+    }
+
+    #toolbar {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 8px;
+      right: 8px;
+      top: calc(env(safe-area-inset-top) + 12px);
+      text-align: center;
+    }
+
+    #toolbar button {
+      border: 0;
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-weight: 700;
+      background: white;
+      color: #111;
+      margin: 4px;
+    }
+
+    #status {
+      position: fixed;
+      z-index: 1000;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(0,0,0,.62);
+      color: white;
+      font-size: 15px;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="startPanel">
+    <h1>AR Microscope</h1>
+    <p>Uruchom kamerę i skieruj telefon na zdjęcie mikroskopu użyte do wygenerowania <b>targets.mind</b>.</p>
+    <button id="startButton">Uruchom AR</button>
+  </div>
+
+  <div id="toolbar">
+    <button id="rotateButton">360°</button>
+    <button id="sectionButton">Przekrój</button>
+    <button id="explodeButton">Eksploduj</button>
+    <button id="resetButton">Reset</button>
+  </div>
+
+  <div id="status">Czekam na wykrycie zdjęcia mikroskopu...</div>
+
+  <a-scene
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: yes; uiLoading: yes; filterMinCF: 0.0001; filterBeta: 0.001"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <a-asset-item id="microscopeModel" src="./microscope.glb"></a-asset-item>
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <a-gltf-model
+        id="microscope"
+        src="#microscopeModel"
+        position="0 0 0"
+        rotation="0 0 0"
+        scale="0.35 0.35 0.35">
+      </a-gltf-model>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    const sceneEl = document.querySelector("a-scene");
+    const startPanel = document.getElementById("startPanel");
+    const startButton = document.getElementById("startButton");
+    const toolbar = document.getElementById("toolbar");
+    const statusBox = document.getElementById("status");
+    const target = document.getElementById("target");
+    const microscope = document.getElementById("microscope");
+
+    let rotationEnabled = false;
+    let currentScale = 0.35;
+
+    function setStatus(text) {
+      statusBox.style.display = "block";
+      statusBox.textContent = text;
+    }
+
+    startButton.addEventListener("click", async () => {
+      startPanel.style.display = "none";
+      statusBox.style.display = "block";
+      setStatus("Uruchamiam kamerę. Skieruj telefon na zdjęcie mikroskopu.");
+      try {
+        const arSystem = sceneEl.systems["mindar-image-system"];
+        await arSystem.start();
+      } catch (e) {
+        startPanel.style.display = "block";
+        setStatus("Błąd uruchomienia AR. Sprawdź HTTPS, kamerę i plik targets.mind.");
+        console.error(e);
+      }
+    });
+
+    target.addEventListener("targetFound", () => {
+      toolbar.style.display = "block";
+      setStatus("Wykryto zdjęcie mikroskopu. Model 3D jest aktywny.");
+    });
+
+    target.addEventListener("targetLost", () => {
+      setStatus("Utracono śledzenie. Skieruj telefon ponownie na zdjęcie mikroskopu.");
+    });
+
+    document.getElementById("rotateButton").addEventListener("click", () => {
+      rotationEnabled = !rotationEnabled;
+      setStatus(rotationEnabled ? "Obrót 360° włączony." : "Obrót 360° wyłączony.");
+    });
+
+    document.getElementById("sectionButton").addEventListener("click", () => {
+      microscope.setAttribute("material", "opacity: 0.55; transparent: true");
+      setStatus("Przekrój: demonstracja przez przezroczystość. Prawdziwy przekrój wymaga osobnego modelu 3D.");
+    });
+
+    document.getElementById("explodeButton").addEventListener("click", () => {
+      currentScale = currentScale * 1.25;
+      microscope.setAttribute("scale", `${currentScale} ${currentScale} ${currentScale}`);
+      setStatus("Eksploduj: demonstracyjne powiększenie. Prawdziwe rozłożenie wymaga modelu podzielonego na części.");
+    });
+
+    document.getElementById("resetButton").addEventListener("click", () => {
+      rotationEnabled = false;
+      currentScale = 0.35;
+      microscope.setAttribute("rotation", "0 0 0");
+      microscope.setAttribute("scale", `${currentScale} ${currentScale} ${currentScale}`);
+      microscope.removeAttribute("material");
+      setStatus("Reset modelu.");
+    });
+
+    sceneEl.addEventListener("renderstart", () => {
+      setStatus("Gotowe. Skieruj telefon na zdjęcie mikroskopu.");
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (rotationEnabled) {
+        const rot = microscope.getAttribute("rotation");
+        microscope.setAttribute("rotation", {
+          x: rot.x,
+          y: rot.y + 1.2,
+          z: rot.z
+        });
+      }
+    }
+    animate();
+  </script>
+</body>
+</html>
