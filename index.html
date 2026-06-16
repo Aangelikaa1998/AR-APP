@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AR Product Viewer</title>
+  <meta name="theme-color" content="#111827" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+</head>
+<body>
+  <div id="startScreen" class="screen">
+    <div class="card">
+      <h1>AR Product Viewer</h1>
+      <p>Otwórz aplikację w Chrome lub Safari, zezwól na kamerę i skieruj telefon na zdjęcie kamery albo śrubokręta.</p>
+      <button id="startBtn">Uruchom kamerę</button>
+      <p id="status" class="status">Gotowe do startu.</p>
+    </div>
+  </div>
+
+  <div id="toolbar" class="toolbar hidden">
+    <button id="btnNormal">Normalny</button>
+    <button id="btnRotate">360°</button>
+    <button id="btnZoomIn">+</button>
+    <button id="btnZoomOut">−</button>
+    <button id="btnReset">Reset</button>
+  </div>
+
+  <a-scene id="scene"
+    mindar-image="imageTargetSrc: ./assets/targets/targets.mind; autoStart: false; uiScanning: yes; filterMinCF:0.0001; filterBeta: 0.001"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights: true, antialias: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: true"
+    embedded>
+
+    <a-assets>
+      <a-asset-item id="cameraModel" src="./assets/models/CameraTest2.gltf"></a-asset-item>
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <!-- Target 0: camera_reference -->
+    <a-entity mindar-image-target="targetIndex: 0">
+      <a-entity id="cameraEntity"
+        gltf-model="#cameraModel"
+        position="0 0 0"
+        rotation="0 0 0"
+        scale="0.25 0.25 0.25">
+      </a-entity>
+    </a-entity>
+
+    <!-- Target 1: screwdriver_reference; tymczasowy model demonstracyjny -->
+    <a-entity mindar-image-target="targetIndex: 1">
+      <a-entity id="screwdriverEntity" position="0 0 0" rotation="0 0 90" scale="1 1 1">
+        <a-cylinder radius="0.035" height="0.75" color="#2f3440" position="0 0 0"></a-cylinder>
+        <a-cylinder radius="0.075" height="0.22" color="#111827" position="0 0.48 0"></a-cylinder>
+        <a-cone radius-bottom="0.035" radius-top="0.008" height="0.25" color="#9ca3af" position="0 -0.5 0"></a-cone>
+      </a-entity>
+    </a-entity>
+
+    <a-light type="ambient" intensity="1.1"></a-light>
+    <a-light type="directional" intensity="0.8" position="1 2 1"></a-light>
+  </a-scene>
+
+  <script src="app.js"></script>
+</body>
+</html>
