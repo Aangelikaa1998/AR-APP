@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>AR Product Viewer</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0b0f14;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    #app {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    #video {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #111;
+      display: none;
+    }
+    #startPanel {
+      position: relative;
+      z-index: 10;
+      margin: auto;
+      width: min(92vw, 520px);
+      padding: 24px;
+      border-radius: 20px;
+      background: rgba(20, 24, 32, .92);
+      box-shadow: 0 20px 60px rgba(0,0,0,.45);
+      text-align: center;
+    }
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 15px 20px;
+      font-size: 17px;
+      font-weight: 700;
+      background: #ffffff;
+      color: #111;
+      margin-top: 16px;
+      cursor: pointer;
+    }
+    #hud {
+      display: none;
+      position: fixed;
+      z-index: 20;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(8px);
+    }
+    #status {
+      font-size: 14px;
+      line-height: 1.35;
+      opacity: .95;
+    }
+    #error {
+      margin-top: 14px;
+      color: #ffb4b4;
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+    #fakeModel {
+      display: none;
+      position: fixed;
+      z-index: 15;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 190px;
+      height: 110px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #303846, #111822);
+      border: 3px solid rgba(255,255,255,.8);
+      box-shadow: 0 20px 60px rgba(0,0,0,.55);
+      text-align: center;
+      line-height: 110px;
+      font-weight: bold;
+    }
+    #fakeModel::before {
+      content: "";
+      position: absolute;
+      right: -42px;
+      top: 27px;
+      width: 72px;
+      height: 56px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #1d2733 0 35%, #778899 36% 48%, #16202b 49% 100%);
+      border: 3px solid rgba(255,255,255,.8);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <video id="video" playsinline autoplay muted></video>
+
+    <div id="startPanel">
+      <h1>AR Product Viewer</h1>
+      <p>Kliknij przycisk. Chrome/Safari powinien zapytać o dostęp do kamery.</p>
+      <button id="startBtn">Uruchom kamerę</button>
+      <div id="error"></div>
+    </div>
+
+    <div id="fakeModel">MODEL 3D</div>
+
+    <div id="hud">
+      <div id="status">Kamera działa. Teraz można dodać właściwe rozpoznawanie zdjęć i model 3D.</div>
+    </div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const video = document.getElementById('video');
+    const startPanel = document.getElementById('startPanel');
+    const hud = document.getElementById('hud');
+    const errorBox = document.getElementById('error');
+    const fakeModel = document.getElementById('fakeModel');
+
+    function showError(message) {
+      errorBox.textContent = message;
+      console.error(message);
+    }
+
+    async function startCamera() {
+      errorBox.textContent = "";
+
+      if (!window.isSecureContext) {
+        showError("Błąd: strona musi działać przez HTTPS. GitHub Pages jest OK, ale adres musi zaczynać się od https://");
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError("Błąd: ta przeglądarka nie udostępnia navigator.mediaDevices.getUserMedia(). Użyj aktualnego Chrome lub Safari.");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        video.style.display = "block";
+        startPanel.style.display = "none";
+        hud.style.display = "block";
+        fakeModel.style.display = "block";
+
+      } catch (err) {
+        let msg = "Nie udało się uruchomić kamery.\n\n";
+        msg += "Nazwa błędu: " + (err.name || "brak") + "\n";
+        msg += "Opis: " + (err.message || "brak") + "\n\n";
+        msg += "Sprawdź: ustawienia uprawnień kamery dla tej strony, HTTPS oraz czy inna aplikacja nie używa kamery.";
+        showError(msg);
+      }
+    }
+
+    startBtn.addEventListener('click', startCamera);
+  </script>
+</body>
+</html>
